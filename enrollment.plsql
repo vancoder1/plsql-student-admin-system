@@ -1,3 +1,4 @@
+-- Note: should probably make this private
 CREATE OR REPLACE FUNCTION student_inside_class(
     p_stu_id IN NUMBER,
     p_class_id IN NUMBER
