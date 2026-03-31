@@ -1,14 +1,21 @@
--- 1. Create the audit table for tracking grade changes
-CREATE TABLE grade_change_history (
-    student_id     NUMBER(8,0),
-    section_id     NUMBER(8,0),
-    enroll_date    DATE,
-    previous_grade NUMBER(3,0),
-    new_grade      NUMBER(3,0),
-    change_date    DATE
-);
+-- 1. Create the explicitly requested audit table
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE TABLE grade_change_history (
+        student_id     NUMBER(8,0),
+        section_id     NUMBER(8,0),
+        enroll_date    DATE,
+        previous_grade NUMBER(3,0), -- Follows schema numeric final_grade
+        new_grade      NUMBER(3,0), -- Follows schema numeric final_grade
+        change_date    DATE
+    )';
+EXCEPTION
+    WHEN OTHERS THEN
+        IF SQLCODE != -955 THEN RAISE; END IF;
+END;
+/
 
 -- 2. Create the row-level trigger
+-- Note: Triggered off the actual schema column (FINAL_GRADE)
 CREATE OR REPLACE TRIGGER audit_grade_change
 AFTER UPDATE OF final_grade ON enrollment
 FOR EACH ROW

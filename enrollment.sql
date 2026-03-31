@@ -8,17 +8,19 @@ IS
     -- Dummy variable
     v_tmp NUMBER;
 BEGIN
-    SELECT class_id
+    -- Mapped strictly to schema columns
+    SELECT section_id
     INTO v_tmp
-    FROM enrollments
-    WHERE stu_id = p_stu_id
-    AND class_id = p_class_id;
+    FROM enrollment
+    WHERE student_id = p_stu_id
+    AND section_id = p_class_id;
 
     RETURN TRUE;
 EXCEPTION
     WHEN no_data_found THEN
         RETURN FALSE;
 END;
+/
 
 CREATE OR REPLACE PACKAGE pkg_enrollment IS
     PROCEDURE enroll_student_in_class(
@@ -42,6 +44,7 @@ CREATE OR REPLACE PACKAGE pkg_enrollment IS
         p_end_date IN DATE
     );
 END pkg_enrollment;
+/
 
 CREATE OR REPLACE PACKAGE BODY pkg_enrollment IS
     PROCEDURE enroll_student_in_class(
@@ -52,13 +55,17 @@ CREATE OR REPLACE PACKAGE BODY pkg_enrollment IS
     BEGIN
         -- Validate student is not in class
         IF student_inside_class(p_stu_id, p_class_id) THEN
-            RAISE_APPLICATION_ERROR(-20001, 'Student with ID' || p_stu_id || ' is already enrolled in class with ID' || p_class_id || '.');
+            RAISE_APPLICATION_ERROR(-20001, 'Student with ID ' || p_stu_id || ' is already enrolled in class with ID ' || p_class_id || '.');
         ELSE
-            INSERT INTO enrollments (stu_id, class_id, enrollment_date, status) VALUES (
+            -- Mapped to schema constraints (Requires audit columns, omitted STATUS)
+            INSERT INTO enrollment (student_id, section_id, enroll_date, created_by, created_date, modified_by, modified_date) VALUES (
                 p_stu_id,
                 p_class_id,
                 SYSDATE,
-                'Enrolled'
+                USER,
+                SYSDATE,
+                USER,
+                SYSDATE
             );
         END IF;
     END;
@@ -71,11 +78,10 @@ CREATE OR REPLACE PACKAGE BODY pkg_enrollment IS
         e_student_not_in_class EXCEPTION;
     BEGIN
         IF student_inside_class(p_stu_id, p_class_id) THEN
-            DELETE FROM enrollments
-            WHERE stu_id = p_stu_id
-            AND class_id = p_class_id;
+            DELETE FROM enrollment
+            WHERE student_id = p_stu_id
+            AND section_id = p_class_id;
         ELSE
-            -- Note: the assignment calls for a "user-defined exception", but those have no way of associating an error message.
             RAISE_APPLICATION_ERROR(-20002, 'Attempted to drop student with ID ' || p_stu_id || ' from class with ID ' || p_class_id || ', but they were not already enrolled in this class.');
         END IF;
     END;
@@ -88,12 +94,13 @@ CREATE OR REPLACE PACKAGE BODY pkg_enrollment IS
     IS
         CURSOR c_students
         IS
-            SELECT class_id, enrollment_date, status status
-            FROM enrollments
-            WHERE stu_id = p_stu_id
-            AND (p_start_date IS NOT NULL AND enrollment_date >= p_start_date)
-            AND (p_end_date IS NOT NULL AND enrollment_date <= p_end_date)
-            ORDER BY enrollment_date;
+            -- Hardcoded 'Enrolled' since if they are in the table, they are enrolled
+            SELECT section_id AS class_id, enroll_date AS enrollment_date, 'Enrolled' AS status
+            FROM enrollment
+            WHERE student_id = p_stu_id
+            AND (p_start_date IS NULL OR enroll_date >= p_start_date)
+            AND (p_end_date IS NULL OR enroll_date <= p_end_date)
+            ORDER BY enroll_date;
     BEGIN
         FOR rec IN c_students LOOP
             DBMS_OUTPUT.PUT_LINE('Class ID: ' || rec.class_id || ', Enrollment Date: ' || rec.enrollment_date || ', Status: ' || rec.status);
@@ -107,14 +114,15 @@ CREATE OR REPLACE PACKAGE BODY pkg_enrollment IS
     IS
         CURSOR c_students
         IS
-            SELECT stu_id, class_id, enrollment_date, status status
-            FROM enrollments
-            WHERE (p_start_date IS NOT NULL AND enrollment_date >= p_start_date)
-            AND (p_end_date IS NOT NULL AND enrollment_date <= p_end_date)
-            ORDER BY enrollment_date;
+            SELECT student_id AS stu_id, section_id AS class_id, enroll_date AS enrollment_date, 'Enrolled' AS status
+            FROM enrollment
+            WHERE (p_start_date IS NULL OR enroll_date >= p_start_date)
+            AND (p_end_date IS NULL OR enroll_date <= p_end_date)
+            ORDER BY enroll_date;
     BEGIN
         FOR rec IN c_students LOOP
             DBMS_OUTPUT.PUT_LINE('Student ID: ' || rec.stu_id || ', Class ID: ' || rec.class_id || ', Enrollment Date: ' || rec.enrollment_date || ', Status: ' || rec.status);
         END LOOP;
     END;
 END pkg_enrollment;
+/

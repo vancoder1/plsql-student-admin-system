@@ -1,3 +1,28 @@
+-- Create explicitly requested tables that are absent in the initial schema
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE TABLE assessments (
+        assessment_id NUMBER PRIMARY KEY,
+        description VARCHAR2(255)
+    )';
+    EXECUTE IMMEDIATE 'CREATE TABLE class_assessments (
+        class_id NUMBER,
+        stu_id NUMBER,
+        assessment_id NUMBER,
+        numeric_grade NUMBER,
+        date_turned_in DATE,
+        PRIMARY KEY (class_id, stu_id, assessment_id),
+        FOREIGN KEY (class_id) REFERENCES section(section_id),
+        FOREIGN KEY (stu_id) REFERENCES student(student_id),
+        FOREIGN KEY (assessment_id) REFERENCES assessments(assessment_id)
+    )';
+    EXECUTE IMMEDIATE 'CREATE SEQUENCE assessment_id_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE';
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Ignore errors if tables already exist
+        IF SQLCODE != -955 AND SQLCODE != -942 THEN RAISE; END IF;
+END;
+/
+
 CREATE OR REPLACE FUNCTION assessment_exists(
     p_class_id IN NUMBER,
     p_stu_id IN NUMBER,
@@ -12,26 +37,26 @@ BEGIN
     FROM assessments
     WHERE assessment_id = p_assessment_id;
 
-    SELECT class_id
+    SELECT section_id
     INTO v_tmp
-    FROM classes
-    WHERE class_id = p_class_id;
+    FROM section
+    WHERE section_id = p_class_id;
 
-    SELECT stu_id
+    SELECT student_id
     INTO v_tmp
-    FROM students
-    WHERE stu_id = p_stu_id;
-
+    FROM student
+    WHERE student_id = p_stu_id;
 
     RETURN TRUE;
 EXCEPTION
     WHEN no_data_found THEN
         RETURN FALSE;
 END;
+/
 
 CREATE OR REPLACE PACKAGE pkg_assessment_and_grades IS
     PROCEDURE create_assignment(
-        assignment_description IN TEXT
+        assignment_description IN VARCHAR2
     );
 
     PROCEDURE enter_student_grade(
@@ -46,12 +71,7 @@ CREATE OR REPLACE PACKAGE pkg_assessment_and_grades IS
     )
     RETURN VARCHAR2;
 END pkg_assessment_and_grades;
-
-CREATE SEQUENCE assessment_id_seq
-    MINVALUE 0
-    START WITH 0
-    INCREMENT BY 1
-    CACHE 20;
+/
 
 CREATE OR REPLACE PACKAGE BODY pkg_assessment_and_grades IS
     PROCEDURE create_assignment(
@@ -77,12 +97,12 @@ CREATE OR REPLACE PACKAGE BODY pkg_assessment_and_grades IS
             INSERT INTO class_assessments (class_id, stu_id, assessment_id, numeric_grade, date_turned_in) VALUES (
                 p_class_id,
                 p_stu_id,
-                p_assignment_id,
+                p_assessment_id,
                 p_numeric_grade,
                 SYSDATE
             );
         ELSE
-            RAISE_APPLICATION_ERROR(-20003, 'Missing either student with ID ' || p_stu_id || ', class with ID ' || p_class_id || ', or assessment with ID ' || p_assessment_id || '.');
+            RAISE_APPLICATION_ERROR(-20003, 'Missing either student, class, or assessment record.');
         END IF;
     END;
 
@@ -101,3 +121,4 @@ CREATE OR REPLACE PACKAGE BODY pkg_assessment_and_grades IS
         END;
     END;
 END pkg_assessment_and_grades;
+/

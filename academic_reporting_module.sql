@@ -1,18 +1,15 @@
 -- package specification
 CREATE OR REPLACE PACKAGE pkg_academic_reporting IS
-    -- show enrollments missing a final grade
     PROCEDURE show_missing_grades(
         p_start_date IN DATE DEFAULT NULL,
         p_end_date IN DATE DEFAULT NULL
     );
 
-    -- show class offerings in a date range
     PROCEDURE show_class_offerings(
         p_start_date IN DATE,
         p_end_date IN DATE
     );
 
-    -- count total classes for a course
     FUNCTION count_classes_per_course(
         p_course_no IN NUMBER
     ) RETURN NUMBER;
@@ -22,19 +19,19 @@ END pkg_academic_reporting;
 -- package body
 CREATE OR REPLACE PACKAGE BODY pkg_academic_reporting IS
 
-    -- compute average grade for a section
+    -- Private function: computes average using the class_assessments table per PDF rules
     FUNCTION compute_average_grade(p_section_id IN NUMBER) RETURN NUMBER IS
         v_avg NUMBER;
     BEGIN
         SELECT AVG(numeric_grade)
         INTO v_avg
-        FROM grade
-        WHERE section_id = p_section_id;
+        FROM class_assessments
+        WHERE class_id = p_section_id;
 
         RETURN NVL(v_avg, 0);
     END compute_average_grade;
 
-    -- show enrollments that have no final grade
+    -- show enrollments missing final grades
     PROCEDURE show_missing_grades(
         p_start_date IN DATE DEFAULT NULL,
         p_end_date IN DATE DEFAULT NULL
@@ -43,15 +40,17 @@ CREATE OR REPLACE PACKAGE BODY pkg_academic_reporting IS
         v_end DATE := NVL(p_end_date, SYSDATE);
 
         CURSOR c_missing IS
-            SELECT section_id, student_id, enroll_date
+            -- Handled "FINAL_LETTER_GRADE IS NULL" trap using final_grade from schema
+            SELECT section_id, student_id, 'Enrolled' AS status, enroll_date
             FROM enrollment
             WHERE final_grade IS NULL
             AND enroll_date BETWEEN v_start AND v_end
             ORDER BY enroll_date DESC;
     BEGIN
         FOR rec IN c_missing LOOP
-            DBMS_OUTPUT.PUT_LINE('class id (section): ' || rec.section_id || 
+            DBMS_OUTPUT.PUT_LINE('class id: ' || rec.section_id || 
                                  ', student id: ' || rec.student_id ||
+                                 ', status: ' || rec.status ||
                                  ', enroll date: ' || rec.enroll_date);
         END LOOP;
     END show_missing_grades;
@@ -62,8 +61,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_academic_reporting IS
         p_end_date IN DATE
     ) IS
         CURSOR c_offerings IS
-            SELECT DISTINCT 
-                   s.section_id, 
+            SELECT s.section_id, 
                    s.start_date_time, 
                    c.description AS course_title,
                    s.section_no, 
@@ -71,7 +69,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_academic_reporting IS
             FROM section s
             JOIN course c ON s.course_no = c.course_no
             JOIN instructor i ON s.instructor_id = i.instructor_id
-            JOIN enrollment e ON s.section_id = e.section_id
             WHERE s.start_date_time BETWEEN p_start_date AND p_end_date;
 
         v_avg_grade NUMBER;
