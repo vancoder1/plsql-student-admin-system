@@ -94,15 +94,22 @@ BEGIN
     -- Setup baseline final_grade
     UPDATE enrollment SET final_grade = 75, modified_date = SYSDATE WHERE student_id = 104 AND section_id = 81;
     
+    -- Clear audit history from the setup phase so we only see the intended update
+    DELETE FROM grade_change_history WHERE student_id = 104 AND section_id = 81;
+    
     -- Test 4A: Updating a final grade and verifying that the trigger records the change (Success)
     UPDATE enrollment SET final_grade = 95, modified_date = SYSDATE WHERE student_id = 104 AND section_id = 81;
     DBMS_OUTPUT.PUT_LINE('SUCCESS: Updated final grade for student 104 in section 81 from 75 to 95.');
     
     -- Query the audit table
     SELECT previous_grade, new_grade INTO v_prev_grade, v_new_grade
-    FROM grade_change_history 
-    WHERE student_id = 104 AND section_id = 81 
-    AND ROWNUM = 1 ORDER BY change_date DESC;
+    FROM (
+        SELECT previous_grade, new_grade
+        FROM grade_change_history 
+        WHERE student_id = 104 AND section_id = 81 
+        ORDER BY change_date DESC
+    )
+    WHERE ROWNUM = 1;
     
     DBMS_OUTPUT.PUT_LINE('Audit Log Validation -> Previous Grade: ' || v_prev_grade || ', New Grade: ' || v_new_grade);
 
